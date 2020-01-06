@@ -1,6 +1,7 @@
 from netmiko import ConnectHandler
 import time
 
+
 ## Getting system date 
 day=time.strftime('%d')
 month=time.strftime('%m')
@@ -10,22 +11,26 @@ today=day+"-"+month+"-"+year
 ## Print banner
 print ('#### Welcome to BackUp configuration script !!! ####')
 print ('#### This script will save all configurations,  ####')
-
+print ('#### from Site controllers and IPOPs to file.   ####')
 print ('####           Backup for ' + today + '            ####' + '\n')
 
 ## Device object for connection
 lab_ap = {
     'device_type': 'extreme',
-    'ip': 'ip',
+    'host': 'hostname',
     'username': 'username',
     'password': 'password'
 }
 lab_gc = {
     'device_type': 'extreme',
-    'ip': 'ip',
+    'host': 'hostname',
     'username': 'username',
     'password': 'password'
 }
+
+## Open Logging file and write exceptions
+logfile = today + ' - log.txt'
+logging = open(logfile, 'w+')
 
 ## connection
 for device in (lab_ap, lab_gc):
@@ -33,18 +38,30 @@ for device in (lab_ap, lab_gc):
         net_connection = ConnectHandler(**device)
         ## Get the hostname
         hostname = net_connection.find_prompt().split('>')[0]
-        ##hostname = get_hostname.split('>')[0]
-        print (hostname)
+        print ("Connected to " + hostname + " ...")
 
         ## Send 'no page' command to get all output on one page
         net_connection.send_command("no page")
         time.sleep(1)
+        print ("Reading running config from the device ...")
+        ## Send 'show run' command to get configurations
         output = net_connection.send_command("show run")
         time.sleep(3)
-        print (output)
+        filename = hostname + '-' + today + '.txt'
+        saveconfig = open(filename, 'w+')
+        print ("Writing configurations to file ...")
+        try:
+            saveconfig.write(output)
+            saveconfig.close()
+            time.sleep(2)
+        except:
+            logging.write("Unable to write configuration of " + hostname + " to file.")
+            print ("Unable to write configuration of " + hostname + " to file.")
+            saveconfig.close()
         net_connection.disconnect()
     except:
-        print ("Access to " + device['ip'] + "failed, backup did not taken")
+        logging.write("Access to " + device['host'] + " failed, backup did not taken.")
+        print ("Access to " + device['host'] + " failed, backup did not taken.")
 
-
-print ('All configurations backups are made, have a nice day !!!')
+logging.close()
+print ("All configurations backups are made, have a nice day !!!")
