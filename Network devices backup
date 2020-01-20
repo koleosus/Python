@@ -1,86 +1,140 @@
 from netmiko import ConnectHandler
 from datetime import datetime
-import email_helper
+import smtplib
 import time
+import os
 
-## Getting system date 
-day=time.strftime('%d')
-month=time.strftime('%m')
-year=time.strftime('%Y')
-today=day+"-"+month+"-"+year
+# Getting system date
+day = time.strftime('%d')
+month = time.strftime('%m')
+year = time.strftime('%Y')
+today = day + "-" + month + "-" + year
+start_time = datetime.now()
 
-## Print banner
-print ('#### Welcome to BackUp configuration script !!! ####')
-print ('#### This script will save all configurations,  ####')
-print ('#### from Site controllers and IPOPs to file.   ####')
-print ('####           Backup for ' + today + '            ####' + '\n')
+# Save Path for backups files
+save_path = 'C:\\Users\\user\\Desktop\\'
 
-## Email hendler
-def email_handler(message):
-    sender = 'wifi.support@motorolasolutions.com'
-    recipient = 'wifi.support@motorolasolutions.com'
-    subject = 'Backups completed'
-    send_mail(recipient, subject, message, sender)
-    print ('Email notification sent to {}').format(recipient)
 
-## Main function
+def file_len(fname):
+    with open(fname) as f:
+        for i, l in enumerate(f):
+            pass
+    return i + 1
+
+
+device_count = file_len('iplist.txt')
+
+# Name of backup folder
+dir_name = save_path + 'Backups_' + today
+
+
+# Creating folder for current date backups
+def create_folder(path):
+    try:
+        os.mkdir(path)
+    except OSError as e:
+        print("unable to create folder - " + str(e))
+
+
+# Calling creating folder function
+create_folder(dir_name)
+
+
+# Create log file
+logfile = today + ' - log.txt'
+logging = open(logfile, 'w+')
+
+# Print banner
+print('#### Welcome to BackUp configuration script !!! ####')
+print('#### This script will save all configurations,  ####')
+print('#### from Site controllers and IPOPs to file.   ####')
+print('####           Backup for ' + today + '            ####\n')
+
+
+# Email send function - sending email when process of backups is done
+def send_mail(message):
+    gmail_user = 'mail@gmail.com'
+    gmail_password = 'password'
+
+    sent_from = gmail_user
+    to = ['mail@gmail.com', 'mail@gmail.com']
+    subject = 'Backups complete'
+    body = message
+
+    email_text = """\
+    From: %s
+    To: %s
+    Subject: %s
+
+    %s
+    """ % (sent_from, ", ".join(to), subject, body)
+
+    try:
+        server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
+        server.ehlo()
+        server.login(gmail_user, gmail_password)
+        server.sendmail(sent_from, to, email_text)
+        logging.write(today + ' - Email sent!\n')
+        print('[EMAIL] Email sent!\n')
+        server.close()
+
+    except smtplib.SMTPException as e:
+        logging.write(today + 'Something went wrong with email connection... - ' + str(e))
+        print('[ERROR] Something went wrong with email connection... - ' + str(e))
+
+
 def main():
-	## Create LOG file
-	logfile = today + ' - log.txt'
-	logging = open(logfile, 'w+')
-	start_time = datetime.now()
-	
-	## Open file with all ip addresses of devices
-	try:
-		with open('iplist.txt') as f:
-			devices_list = f.read().splitlines()
-	except:
-		logging.write(today + " - Unable to read iplist.txt file.\n")
-		print ("Unable to read iplist.txt file.\n")
-		f.close()
-	
-	for device in devices_list:
-		## Devices object for connection
-		ip_of_device = device
-		device_object = {
-        'device_type': 'extreme',
-        'ip': ip_of_device,
-        'username': 'username',
-        'password': 'password'}
-		try:
-			net_connection = ConnectHandler(**device_object)
-			## Get the hostname
-			hostname = net_connection.find_prompt().split('>')[0]
-			print ("Connected to " + hostname + " ...")
+    print('Total devices count: [ %s ]' % device_count)
+    # Open file with all ip addresses of devices
+    try:
+        with open('iplist.txt') as f:
+            devices_list = f.read().splitlines()
+    except Exception as e:
+        logging.write(today + " - Unable to read iplist.txt file - " + str(e))
+        print("[ERROR]: Unable to read iplist.txt file - " + str(e))
+        f.close()
 
-			## Send 'no page' command to get all output on one page
-			net_connection.send_command("no page")
-			time.sleep(1)
-			print ("Reading running config from the device ...")
-			## Send 'show run' command to get configurations
-			output = net_connection.send_command("show run")
-			time.sleep(3)
-			filename = hostname + '-' + today + '.txt'
-			saveconfig = open('\backups\' + filename, 'w+')
-			print ("Writing configurations to file ...")
-			try:
-				saveconfig.write(output)
-				saveconfig.close()
-				time.sleep(2)
-			except:
-				logging.write(today + " - Unable to write configuration of " + hostname + " to file.\n")
-				print ("Unable to write configuration of " + hostname + " to file.\n")
-				saveconfig.close()
-			net_connection.disconnect()
-		except:
-			logging.write(today + " - Access to " + device['host'] + " failed, backup did not taken.\n")
-			print ("Access to " + device['host'] + " failed, backup did not taken.\n")
+    for device in devices_list:
+        # Devices object for connection
+        device_object = {'device_type': 'extreme', 'ip': device, 'username': 'username', 'password': 'password'}
+        try:
+            net_connection = ConnectHandler(**device_object)
+            # Get the hostname
+            hostname = net_connection.find_prompt().split('>')[0]
+            print("[C] Connected to " + hostname + " ...")
 
-	logging.close()
-	print ("All configurations backups are made, have a nice day !!!")
-	email_handler("Backup complete")
-	
-	print("\nElapsed time: " + str(datetime.now() - start_time))
+            # Send 'no page' command to get all output on one page
+            net_connection.send_command("no page")
+            time.sleep(1)
+
+            print("[R] Reading running config from the device ...")
+            # Send 'show run' command to get configurations
+            output = net_connection.send_command("show running-config")
+            time.sleep(3)
+            # Creating backup .txt file
+            filename = save_path + hostname + '-' + today + '.txt'
+            saveconfig = open(filename, 'w+')
+            # write running config to file
+            print("[W] Writing configurations to file ...\n")
+            try:
+                saveconfig.write(output)
+                saveconfig.close()
+                time.sleep(2)
+            except Exception as e:
+                logging.write(today + " - Unable to write configuration of " + hostname + " to file - " + str(e))
+                print("[ERROR]: Unable to write configuration of " + hostname + " to file - " + str(e))
+                saveconfig.close()
+            net_connection.disconnect()
+        except Exception as e:
+            logging.write(today + " - Access to " + device_object['ip'] + " failed, backup did not taken - " + str(e))
+            print("[ERROR]: Access to " + device_object['ip'] + " failed, backup did not taken - " + str(e))
+
+    print("[DONE] All configurations backups are made, have a nice day !!!\n")
+    process_time = str(datetime.now() - start_time)
+    send_mail("[DONE] Backups Done - Check LOG file to verify.")
+    print("[TIME] Process completed in : " + process_time)
+    logging.close()
+
 
 if __name__ == "__main__":
     main()
